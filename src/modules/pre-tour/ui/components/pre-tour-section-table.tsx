@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   CalendarDays,
   CopyPlus,
-  FileStack,
   PanelLeftOpen,
   Pencil,
   Plus,
@@ -76,7 +75,6 @@ export function SectionTable({
   showManage,
   onCreateVersion,
   onCopyPlan,
-  onCreateItinerary,
   onAdd,
   addLabel,
   addDisabled = false,

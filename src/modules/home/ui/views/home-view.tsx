@@ -7,18 +7,12 @@ import {
   Bot,
   Building2,
   CalendarRange,
-  CircleDollarSign,
   Lock,
-  LogOut,
   Mail,
   PlaneTakeoff,
-  Settings2,
-  ShieldCheck,
   Sparkles,
-  WandSparkles,
   type LucideIcon,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,20 +23,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { LoadingState } from "@/components/ui/loading-state";
-import { authClient } from "@/lib/auth-client";
 import {
   useDashboardAccessState,
   useDashboardShell,
 } from "@/modules/dashboard/ui/components/dashboard-shell-provider";
 
 type BadgeVariant = "default" | "secondary" | "outline" | "destructive";
-
-type DashboardRecord = {
-  label: string;
-  value: string;
-  detail: string;
-  icon: LucideIcon;
-};
 
 type WorkflowLane = {
   title: string;
@@ -83,7 +69,6 @@ function accessStatusVariant(
 }
 
 export const HomeView = () => {
-  const router = useRouter();
   const { company, viewer, access, needsSetup } = useDashboardShell();
   const {
     isAdmin,
@@ -99,15 +84,6 @@ export const HomeView = () => {
   const canOpenTechVisits =
     isAdmin || privileges.includes("SCREEN_TECHNICAL_VISITS");
   const canOpenBin = isAdmin || privileges.includes("SCREEN_BIN");
-  const screenPrivilegeCount = privileges.filter((code) =>
-    code.startsWith("SCREEN_"),
-  ).length;
-
-  const displayName =
-    viewer?.name?.trim() ||
-    viewer?.email?.split("@")[0] ||
-    access?.role?.toLowerCase() ||
-    "team";
 
   const workflowLanes = useMemo<WorkflowLane[]>(
     () => [
@@ -208,51 +184,6 @@ export const HomeView = () => {
       company?.helpEnabled,
       isAdmin,
       isReadOnly,
-    ],
-  );
-
-  const dashboardRecords = useMemo<DashboardRecord[]>(
-    () => [
-      {
-        label: "AI Lanes",
-        value: `${workflowLanes.filter((lane) => lane.available).length}/${workflowLanes.length}`,
-        detail: "Workflow spaces currently available in this workspace.",
-        icon: WandSparkles,
-      },
-      {
-        label: "Access Mode",
-        value: isReadOnly
-          ? "View Only"
-          : canWritePreTour
-            ? "Write Enabled"
-            : "Managed Access",
-        detail: `${humanizeConstant(access?.role)} access across ${screenPrivilegeCount} screen privileges.`,
-        icon: ShieldCheck,
-      },
-      {
-        label: "Subscription",
-        value: access?.plan ?? "Unknown",
-        detail: `${humanizeConstant(access?.subscriptionStatus)}${access?.subscriptionEndsAt ? ` until ${formatIsoDate(access.subscriptionEndsAt)}` : ""}.`,
-        icon: Sparkles,
-      },
-      {
-        label: "Commercial Base",
-        value: company?.baseCurrencyCode ?? "N/A",
-        detail: `Transport basis: ${humanizeConstant(company?.transportRateBasis)}.`,
-        icon: CircleDollarSign,
-      },
-    ],
-    [
-      access?.plan,
-      access?.role,
-      access?.subscriptionEndsAt,
-      access?.subscriptionStatus,
-      canWritePreTour,
-      company?.baseCurrencyCode,
-      company?.transportRateBasis,
-      isReadOnly,
-      screenPrivilegeCount,
-      workflowLanes,
     ],
   );
 

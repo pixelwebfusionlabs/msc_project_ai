@@ -11,7 +11,7 @@ declare module "imapflow" {
       seq: number | string,
       query: Record<string, unknown>,
       options?: Record<string, unknown>
-    ): Promise<Record<string, any>>;
+    ): Promise<Record<string, unknown>>;
   }
 }
 
