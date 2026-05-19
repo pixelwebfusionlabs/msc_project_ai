@@ -1,0 +1,563 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  CalendarDays,
+  CopyPlus,
+  FileStack,
+  PanelLeftOpen,
+  Pencil,
+  Plus,
+  Settings2,
+  Trash2,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { TablePagination } from "@/components/ui/table-pagination";
+import { LoadingState } from "@/components/ui/loading-state";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { TableLoadingRow } from "@/components/ui/table-loading-row";
+import { cn } from "@/lib/utils";
+import { COLUMNS, META } from "@/modules/pre-tour/shared/pre-tour-management-constants";
+import type { PreTourResourceKey, Row } from "@/modules/pre-tour/shared/pre-tour-management-types";
+import { formatCell } from "@/modules/pre-tour/lib/pre-tour-management-utils";
+
+type SectionTableProps = {
+  resource: PreTourResourceKey;
+  rows: Row[];
+  loading: boolean;
+  isReadOnly: boolean;
+  lookups: Record<string, string>;
+  embedded?: boolean;
+  hideHeader?: boolean;
+  hideSummary?: boolean;
+  showManage?: boolean;
+  onCreateVersion?: (row: Row) => void;
+  onCopyPlan?: (row: Row) => void;
+  onCreateItinerary?: (row: Row) => void;
+  onAdd?: () => void;
+  addLabel?: string;
+  addDisabled?: boolean;
+  hideAdd?: boolean;
+  onView?: (row: Row) => void;
+  hideEdit?: boolean;
+  hideDelete?: boolean;
+  editLabel?: string;
+  deleteLabel?: string;
+  serverPagination?: {
+    summaryText: string;
+    canPrevious: boolean;
+    canNext: boolean;
+    onPrevious: () => void;
+    onNext: () => void;
+  };
+  onEdit: (row: Row) => void;
+  onDelete: (row: Row) => void;
+};
+
+export function SectionTable({
+  resource,
+  rows,
+  loading,
+  isReadOnly,
+  lookups,
+  embedded = false,
+  hideHeader = false,
+  hideSummary = false,
+  showManage,
+  onCreateVersion,
+  onCopyPlan,
+  onCreateItinerary,
+  onAdd,
+  addLabel,
+  addDisabled = false,
+  hideAdd,
+  onView,
+  hideEdit,
+  hideDelete,
+  editLabel,
+  deleteLabel,
+  serverPagination,
+  onEdit,
+  onDelete,
+}: SectionTableProps) {
+  const isPreTourPlans = resource === "pre-tours";
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const DEFAULT_TEXT_TRUNCATE_LENGTH = 40;
+  const PLAN_TITLE_TRUNCATE_LENGTH = 48;
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+    if (page > totalPages) setPage(totalPages);
+  }, [page, pageSize, rows.length]);
+
+  const paginatedRows = useMemo(() => {
+    if (serverPagination) return rows;
+    const start = (page - 1) * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [page, pageSize, rows, serverPagination]);
+
+  const preTourSummary = useMemo(() => {
+    if (!isPreTourPlans) return null;
+    let draft = 0;
+    let active = 0;
+    let completed = 0;
+    rows.forEach((row) => {
+      const status = String(row.status || "").toUpperCase();
+      if (status === "DRAFT") draft += 1;
+      if (["QUOTED", "APPROVED", "BOOKED", "IN_PROGRESS"].includes(status)) active += 1;
+      if (status === "COMPLETED") completed += 1;
+    });
+    return { total: rows.length, draft, active, completed };
+  }, [isPreTourPlans, rows]);
+
+  const statusClassName = (statusValue: unknown) => {
+    const status = String(statusValue || "").toUpperCase();
+    if (status === "DRAFT") return "border-slate-300 bg-slate-100 text-slate-700";
+    if (status === "QUOTED") return "border-sky-200 bg-sky-100 text-sky-700";
+    if (status === "APPROVED") return "border-violet-200 bg-violet-100 text-violet-700";
+    if (status === "BOOKED") return "border-amber-200 bg-amber-100 text-amber-700";
+    if (status === "IN_PROGRESS") return "border-indigo-200 bg-indigo-100 text-indigo-700";
+    if (status === "COMPLETED") return "border-emerald-200 bg-emerald-100 text-emerald-700";
+    if (status === "CANCELLED") return "border-rose-200 bg-rose-100 text-rose-700";
+    return "border-muted bg-muted text-muted-foreground";
+  };
+
+  const formatDate = (value: unknown) => {
+    if (!value) return "-";
+    const date = new Date(String(value));
+    if (Number.isNaN(date.getTime())) return "-";
+    return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  };
+
+  const truncateText = (value: unknown, maxLength = DEFAULT_TEXT_TRUNCATE_LENGTH) => {
+    const text = String(value ?? "").trim();
+    if (!text || text === "-") return "-";
+    if (text.length <= maxLength) return text;
+    return `${text.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+  };
+
+  const renderTruncatedText = (
+    value: unknown,
+    options?: { maxLength?: number; className?: string }
+  ) => {
+    const text = String(value ?? "").trim();
+    const displayText = truncateText(value, options?.maxLength);
+    return (
+      <span
+        className={cn("block w-full max-w-full truncate", options?.className)}
+        title={text && text !== "-" ? text : undefined}
+      >
+        {displayText}
+      </span>
+    );
+  };
+
+  const getColumnWidthClassName = (columnKey: string) => {
+    if (["status", "isActive"].includes(columnKey)) return "w-[120px]";
+    if (
+      [
+        "title",
+        "notes",
+        "serviceId",
+        "planItemId",
+        "technicalVisitId",
+        "categoryId",
+        "typeId",
+        "programCode",
+        "planCode",
+        "referenceNo",
+        "updatedByName",
+        "deletedByName",
+      ].includes(columnKey)
+    ) {
+      return "w-[220px]";
+    }
+    if (
+      [
+        "updatedAt",
+        "deletedAt",
+        "date",
+        "dayId",
+        "totalAmount",
+        "baseTotal",
+        "taxTotal",
+        "grandTotal",
+      ].includes(columnKey)
+    ) {
+      return "w-[150px]";
+    }
+    return "w-[140px]";
+  };
+
+  const renderActions = (row: Row, compact = false) => (
+    <div className="flex flex-wrap justify-end gap-1">
+      {onView ? (
+        compact ? (
+          <Button size="icon" variant="outline" className="size-7" title="View" onClick={() => onView(row)}>
+            <PanelLeftOpen className="size-4" />
+          </Button>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => onView(row)}>
+            <PanelLeftOpen className="mr-1 size-4" />
+            View
+          </Button>
+        )
+      ) : null}
+      {showManage && resource === "pre-tours" ? (
+        <Button
+          size={compact ? "icon" : "sm"}
+          variant="outline"
+          className={cn(compact ? "size-7" : "master-manage-btn")}
+          title="Manage"
+          asChild
+        >
+          <Link href={`/master-data/pre-tours/${row.id}`}>
+            <Settings2 className={cn("size-4", compact ? "" : "mr-1")} />
+            {compact ? null : "Manage"}
+          </Link>
+        </Button>
+      ) : null}
+      {resource === "pre-tours" && onCreateVersion ? (
+        compact ? (
+          <Button
+            size="icon"
+            variant="outline"
+            className="size-7"
+            title="Create Version"
+            onClick={() => onCreateVersion(row)}
+            disabled={isReadOnly}
+          >
+            <Plus className="size-4" />
+          </Button>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => onCreateVersion(row)} disabled={isReadOnly}>
+            + Version
+          </Button>
+        )
+      ) : null}
+      {resource === "pre-tours" && onCopyPlan ? (
+        compact ? (
+          <Button
+            size="icon"
+            variant="outline"
+            className="size-7"
+            title="Copy"
+            onClick={() => onCopyPlan(row)}
+            disabled={isReadOnly}
+          >
+            <CopyPlus className="size-4" />
+          </Button>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => onCopyPlan(row)} disabled={isReadOnly}>
+            <CopyPlus className="mr-1 size-4" />
+            Copy
+          </Button>
+        )
+      ) : null}
+      {/* {resource === "pre-tours" && onCreateItinerary ? (
+        compact ? (
+          <Button
+            size="icon"
+            variant="outline"
+            className="size-7"
+            title="Create Itinerary"
+            onClick={() => onCreateItinerary(row)}
+            disabled={isReadOnly}
+          >
+            <FileStack className="size-4" />
+          </Button>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => onCreateItinerary(row)} disabled={isReadOnly}>
+            <FileStack className="mr-1 size-4" />
+            Itinerary
+          </Button>
+        )
+      ) : null} */}
+      {!hideEdit ? (
+        compact ? (
+          <Button
+            size="icon"
+            variant="outline"
+            className="size-7"
+            title={editLabel || "Edit"}
+            onClick={() => onEdit(row)}
+            disabled={isReadOnly}
+          >
+            <Pencil className="size-4" />
+          </Button>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => onEdit(row)} disabled={isReadOnly}>
+            <Pencil className="mr-1 size-4" />
+            {editLabel || "Edit"}
+          </Button>
+        )
+      ) : null}
+      {!hideDelete
+        ? compact ? (
+            <Button
+              size="icon"
+              variant="outline"
+              className="size-7"
+              title={deleteLabel || "Delete"}
+              onClick={() => onDelete(row)}
+              disabled={isReadOnly}
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => onDelete(row)} disabled={isReadOnly}>
+              <Trash2 className="mr-1 size-4" />
+              {deleteLabel || "Delete"}
+            </Button>
+          )
+        : null}
+    </div>
+  );
+
+  return (
+    <Card className={cn("border-border/70 shadow-sm", embedded && "border-0 bg-transparent shadow-none")}>
+      {!hideHeader ? (
+        <CardHeader className={cn("flex flex-row items-start justify-between gap-2 space-y-0 px-4 py-3", embedded && "px-0 pt-0")}>
+          <div>
+            <CardTitle className="text-sm">{META[resource].title}</CardTitle>
+            <CardDescription className="text-xs">{META[resource].description}</CardDescription>
+          </div>
+          {!hideAdd ? (
+            <Button className="master-add-btn" size="sm" onClick={onAdd} disabled={isReadOnly || addDisabled}>
+              <Plus className="mr-1 size-4" />
+              {addLabel || "Add"}
+            </Button>
+          ) : null}
+        </CardHeader>
+      ) : null}
+      <CardContent className={cn("space-y-2", embedded && "px-0 pb-0 pt-0")}>
+        {isPreTourPlans && preTourSummary && !hideSummary ? (
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs">
+              <p className="text-muted-foreground">Total Plans</p>
+              <p className="text-base font-semibold">{preTourSummary.total}</p>
+            </div>
+            <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs">
+              <p className="text-muted-foreground">Draft</p>
+              <p className="text-base font-semibold">{preTourSummary.draft}</p>
+            </div>
+            <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs">
+              <p className="text-muted-foreground">Active Pipeline</p>
+              <p className="text-base font-semibold">{preTourSummary.active}</p>
+            </div>
+            <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs">
+              <p className="text-muted-foreground">Completed</p>
+              <p className="text-base font-semibold">{preTourSummary.completed}</p>
+            </div>
+          </div>
+        ) : null}
+
+        {isPreTourPlans ? (
+          <div className="space-y-2">
+            <div className="hidden overflow-x-auto lg:block">
+              <Table className="min-w-[980px] table-fixed">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[150px]">Reference No</TableHead>
+                    <TableHead className="w-[360px]">Plan</TableHead>
+                    <TableHead className="w-[200px]">Travel Window</TableHead>
+                    <TableHead className="w-[120px]">Status</TableHead>
+                    <TableHead className="w-[170px]">Updated</TableHead>
+                    <TableHead className="w-[220px] text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading ? (
+                    <TableLoadingRow
+                      colSpan={6}
+                      title="Plotting pre-tour plans"
+                      description="Loading routes, versions, and planning summaries."
+                    />
+                  ) : rows.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="py-6 text-center text-muted-foreground">
+                        No records found.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    paginatedRows.map((row) => (
+                      <TableRow key={String(row.id)} className="h-11 align-middle">
+                        <TableCell className="py-1.5">
+                          {renderTruncatedText(row.referenceNo || "-", {
+                            maxLength: 22,
+                            className: "text-xs font-semibold",
+                          })}
+                        </TableCell>
+                        <TableCell className="py-1.5">
+                          <div className="flex min-w-0 items-center gap-2 text-xs">
+                            {renderTruncatedText(row.planCode || "-", {
+                              maxLength: 18,
+                              className: "max-w-[110px] font-semibold",
+                            })}
+                            {renderTruncatedText(row.title || "-", {
+                              maxLength: PLAN_TITLE_TRUNCATE_LENGTH,
+                              className: "min-w-0 flex-1 max-w-[190px] text-muted-foreground",
+                            })}
+                            <span className="text-muted-foreground">{`V${String(row.version || 1)}`}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-1.5">
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <CalendarDays className="size-3.5 text-muted-foreground" />
+                            <span>{`${formatDate(row.startDate)} - ${formatDate(row.endDate)}`}</span>
+                            <span className="text-muted-foreground">{`(${String(
+                              row.totalNights ?? 0
+                            )}n)`}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-1.5">
+                          <Badge variant="outline" className={cn("font-medium", statusClassName(row.status))}>
+                            {String(row.status || "-")}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="py-1.5">
+                          <div className="max-w-[160px] truncate text-xs text-muted-foreground">
+                            <span>{formatDate(row.updatedAt)}</span>
+                            <span className="mx-1">•</span>
+                            <span title={String(row.updatedByName || "")}>
+                              {truncateText(row.updatedByName || "-", 18)}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-1.5 text-right">{renderActions(row, true)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="space-y-2 lg:hidden">
+              {loading ? (
+                <LoadingState
+                  compact
+                  title="Plotting pre-tour plans"
+                  description="Loading mobile cards for your current route pipeline."
+                  className="justify-center rounded-md border px-3 py-6"
+                />
+              ) : rows.length === 0 ? (
+                <div className="rounded-md border px-3 py-6 text-center text-sm text-muted-foreground">
+                  No records found.
+                </div>
+              ) : (
+                paginatedRows.map((row) => (
+                  <div key={String(row.id)} className="rounded-md border bg-card p-3">
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold">{`Ref: ${String(row.referenceNo || "-")}`}</p>
+                        <div className="max-w-[220px]">
+                          {renderTruncatedText(row.planCode || "-", {
+                            maxLength: 18,
+                            className: "text-sm font-semibold",
+                          })}
+                        </div>
+                        <div className="max-w-[240px] text-xs text-muted-foreground">
+                          {renderTruncatedText(row.title || "-", {
+                            maxLength: PLAN_TITLE_TRUNCATE_LENGTH,
+                          })}
+                        </div>
+                      </div>
+                      <Badge variant="outline" className={cn("font-medium", statusClassName(row.status))}>
+                        {String(row.status || "-")}
+                      </Badge>
+                    </div>
+                    <div className="grid gap-1 text-xs">
+                      <p>{`${formatDate(row.startDate)} - ${formatDate(row.endDate)} (${String(
+                        row.totalNights ?? 0
+                      )} nights)`}</p>
+                      <p className="text-muted-foreground">{`V${String(row.version || 1)}`}</p>
+                    </div>
+                    <div className="mt-3">{renderActions(row)}</div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        ) : (
+        <div className="overflow-x-auto">
+          <Table className="min-w-[920px] table-fixed">
+            <TableHeader>
+              <TableRow>
+                {COLUMNS[resource].map((column) => (
+                  <TableHead key={column.key} className={getColumnWidthClassName(column.key)}>
+                    {column.label}
+                  </TableHead>
+                ))}
+                <TableHead className="w-[220px] text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableLoadingRow
+                  colSpan={COLUMNS[resource].length + 1}
+                  title="Loading pre-tour records"
+                  description="Pulling the latest operational records into view."
+                />
+              ) : rows.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={COLUMNS[resource].length + 1}
+                    className="py-6 text-center text-muted-foreground"
+                  >
+                    No records found.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                paginatedRows.map((row) => (
+                  <TableRow key={String(row.id)}>
+                    {COLUMNS[resource].map((column) => (
+                      <TableCell key={column.key} className="max-w-0">
+                        {column.key === "status" ? (
+                          <Badge variant="outline">{String(row[column.key] || "-")}</Badge>
+                        ) : (
+                          renderTruncatedText(formatCell(row[column.key], lookups), {
+                            className: "max-w-[220px]",
+                          })
+                        )}
+                      </TableCell>
+                    ))}
+                    <TableCell className="py-1.5 text-right">{renderActions(row)}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+        )}
+        {serverPagination ? (
+          <TablePagination
+            summaryText={serverPagination.summaryText}
+            canPrevious={serverPagination.canPrevious}
+            canNext={serverPagination.canNext}
+            onPrevious={serverPagination.onPrevious}
+            onNext={serverPagination.onNext}
+          />
+        ) : (
+          <TablePagination
+            totalItems={rows.length}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
+        )}
+      </CardContent>
+    </Card>
+  );
+}
